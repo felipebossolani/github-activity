@@ -23,7 +23,7 @@ Prerequisites: `gh` CLI authenticated (`gh auth status`) with scopes `repo` and 
 
 ## Architecture
 
-Everything lives in `gh-activity.py`. The flow is:
+Everything lives in `main.py`. The flow is:
 
 1. `search_commits()` / `search_prs()` — hit GitHub Search API via `gh api --paginate --slurp`
 2. `pr_commit_shas()` — one extra API call per PR to map SHA → PR
