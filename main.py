@@ -10,6 +10,7 @@ Uso:
     ./main.py --user felipebossolani --org my-org --year 2026
     ./main.py --user felipebossolani --year 2026          # sem org = global
     ./main.py --user felipebossolani --year 2026 --stdout
+    ./main.py --user felipebossolani --year 2026 --detailed  # relatório analítico completo
 """
 
 from __future__ import annotations
@@ -104,11 +105,8 @@ def repo_from_commit(commit: dict) -> str:
     return commit["repository"]["full_name"]
 
 
-def build_report(
-    user: str, org: str | None, year: int, commits: list[dict], prs: list[dict]
-) -> str:
-    """Monta o markdown final."""
-    # Index: SHA -> PR (number, title, url)
+def build_sha_index(prs: list[dict]) -> dict[str, dict]:
+    """Mapeia SHA -> metadados do PR. Faz uma chamada de API por PR."""
     sha_to_pr: dict[str, dict] = {}
 
     sys.stderr.write(f"[info] Mapeando commits de {len(prs)} PRs...\n")
@@ -131,10 +129,14 @@ def build_report(
                 "repo": repo,
             }
     sys.stderr.write("\n")
+    return sha_to_pr
 
-    # Estrutura: repo -> mês -> {pr_key: [commits]} | "_no_pr": [commits]
-    # pr_key = (number, title, url, state)
-    grouped: dict[str, dict[int, dict]] = defaultdict(lambda: defaultdict(lambda: {"prs": defaultdict(list), "no_pr": []}))
+
+def build_grouped(commits: list[dict], sha_to_pr: dict[str, dict]) -> dict:
+    """Agrupa commits por repo -> mês -> {prs, no_pr}."""
+    grouped: dict[str, dict[int, dict]] = defaultdict(
+        lambda: defaultdict(lambda: {"prs": defaultdict(list), "no_pr": []})
+    )
 
     for c in commits:
         repo = repo_from_commit(c)
@@ -158,7 +160,85 @@ def build_report(
         else:
             bucket["no_pr"].append(commit_entry)
 
-    # Render
+    return grouped
+
+
+def build_summary(
+    user: str, org: str | None, year: int, commits: list[dict], prs: list[dict],
+    sha_to_pr: dict[str, dict], grouped: dict,
+) -> str:
+    """Relatório gerencial: uma linha por mês, colunas de métricas."""
+    # Agrega por mês (flat, independente de repo)
+    monthly: dict[int, dict] = defaultdict(lambda: {
+        "commits": 0,
+        "prs": set(),       # pr numbers
+        "merged": set(),    # pr numbers merged
+        "repos": set(),     # repos distintos
+        "direct": 0,        # commits sem PR
+    })
+
+    for repo, months in grouped.items():
+        for month, data in months.items():
+            m = monthly[month]
+            for pr_key, pr_commits in data["prs"].items():
+                number, title, url, state, merged = pr_key
+                m["commits"] += len(pr_commits)
+                m["prs"].add(number)
+                if merged:
+                    m["merged"].add(number)
+                m["repos"].add(repo)
+            direct = data["no_pr"]
+            m["commits"] += len(direct)
+            m["direct"] += len(direct)
+            if direct:
+                m["repos"].add(repo)
+
+    org_label = org if org else "todas as orgs/repos"
+    lines = [
+        f"# Atividade de @{user} em {year}",
+        "",
+        f"**Escopo:** {org_label}  ",
+        f"**Total de commits:** {len(commits)}  ",
+        f"**Total de PRs:** {len(prs)}  ",
+        f"**Gerado em:** {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        "",
+        "---",
+        "",
+        "| Mês | Commits | PRs | Merged | Repos | Push direto |",
+        "| --- | ------: | --: | -----: | ----: | ----------: |",
+    ]
+
+    for month in sorted(monthly.keys()):
+        m = monthly[month]
+        lines.append(
+            f"| {PT_MONTHS[month]} "
+            f"| {m['commits']} "
+            f"| {len(m['prs'])} "
+            f"| {len(m['merged'])} "
+            f"| {len(m['repos'])} "
+            f"| {m['direct']} |"
+        )
+
+    # Totais
+    total_commits = sum(m["commits"] for m in monthly.values())
+    total_prs = len({n for m in monthly.values() for n in m["prs"]})
+    total_merged = len({n for m in monthly.values() for n in m["merged"]})
+    total_repos = len({r for repo, months in grouped.items() for r in [repo]})
+    total_direct = sum(m["direct"] for m in monthly.values())
+
+    lines += [
+        f"| **Total** | **{total_commits}** | **{total_prs}** | **{total_merged}** | **{total_repos}** | **{total_direct}** |",
+        "",
+    ]
+
+    return "\n".join(lines)
+
+
+def build_detailed(
+    user: str, org: str | None, year: int, commits: list[dict], prs: list[dict],
+    grouped: dict,
+) -> str:
+    """Relatório analítico completo: repo -> mês -> PR -> commits."""
     org_label = org if org else "todas as orgs/repos"
     lines = [
         f"# Atividade de @{user} em {year}",
@@ -187,7 +267,6 @@ def build_report(
             lines.append(f"### {PT_MONTHS[month]}")
             lines.append("")
 
-            # PRs do mês
             for pr_key, pr_commits in sorted(month_data["prs"].items()):
                 number, title, url, state, merged = pr_key
                 status = "merged" if merged else state
@@ -197,7 +276,6 @@ def build_report(
                     lines.append(f"- `{c['sha']}` {c['date']} — {c['message']}")
                 lines.append("")
 
-            # Commits sem PR
             if month_data["no_pr"]:
                 lines.append("#### _sem PR_")
                 lines.append("")
@@ -215,6 +293,7 @@ def main():
     parser.add_argument("--year", required=True, type=int, help="Ano (ex: 2026)")
     parser.add_argument("--stdout", action="store_true", help="Imprime no stdout em vez de salvar arquivo")
     parser.add_argument("--out", default=None, help="Caminho do arquivo de saída (default: ./output/<user>-<year>-activity.md)")
+    parser.add_argument("--detailed", action="store_true", help="Relatório analítico completo (repo → mês → PR → commits)")
 
     args = parser.parse_args()
 
@@ -233,12 +312,19 @@ def main():
         sys.stderr.write("[warn] Nenhuma atividade encontrada. Encerrando.\n")
         sys.exit(0)
 
-    report = build_report(args.user, args.org, args.year, commits, prs)
+    sha_to_pr = build_sha_index(prs)
+    grouped = build_grouped(commits, sha_to_pr)
+
+    if args.detailed:
+        report = build_detailed(args.user, args.org, args.year, commits, prs, grouped)
+    else:
+        report = build_summary(args.user, args.org, args.year, commits, prs, sha_to_pr, grouped)
 
     if args.stdout:
         print(report)
     else:
-        out_path = Path(args.out) if args.out else Path(f"./output/{args.user}-{args.year}-activity.md")
+        suffix = "-detailed" if args.detailed else ""
+        out_path = Path(args.out) if args.out else Path(f"./output/{args.user}-{args.year}-activity{suffix}.md")
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(report, encoding="utf-8")
         sys.stderr.write(f"[ok] Relatório salvo em: {out_path.resolve()}\n")
