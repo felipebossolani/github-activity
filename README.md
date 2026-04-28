@@ -62,20 +62,33 @@ ln -s "$(pwd)/main.py" ~/.local/bin/gh-activity
 | `--year`    | yes      | Calendar year to audit (e.g. `2026`)                                |
 | `--org`     | no       | Restrict search to a single org. Omit for global search             |
 | `--stdout`  | no       | Print to stdout instead of writing a file                           |
-| `--out`     | no       | Custom output file path (default: `./output/<user>-<year>-activity.md`) |
+| `--out`      | no       | Custom output file path (default: `./output/<user>-<year>-activity.md`) |
+| `--detailed` | no       | Full analytical report grouped by repo → month → PR → commits           |
 
 ## Output format
 
+**Summary report (default):**
+
 ```markdown
-# Activity of @felipebossolani in 2026
+# Activity report — @felipebossolani (2026)
 
 **Scope:** my-org
 **Total commits:** 312
-**Total PRs authored:** 47
+**Total PRs:** 47
 **Generated at:** 2026-04-28 13:15
 
 ---
 
+| Month    | Commits | PRs | Merged | Repos | Direct push |
+| -------- | ------: | --: | -----: | ----: | ----------: |
+| January  |      45 |   8 |      7 |     3 |           2 |
+| February |      32 |   6 |      5 |     2 |           0 |
+| **Total**| **312** |**47**|**41** |   **5**|         **8**|
+```
+
+**Full analytical report (`--detailed`):**
+
+```markdown
 ## my-org/some-repo
 _47 commits_
 
@@ -90,8 +103,6 @@ _47 commits_
 
 - `9876543` 2026-01-22 — hotfix on main
 ```
-
-> The actual report uses Portuguese month names (`Janeiro`, `Fevereiro`, …) and Portuguese labels (`sem PR`). Adjust the `PT_MONTHS` constant and the literal strings in `build_report()` if you need English output.
 
 ## Limits and caveats
 
