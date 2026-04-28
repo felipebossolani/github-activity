@@ -1,5 +1,6 @@
 # Generated activity reports
-*-activity.md
+output/*
+!output/.gitkeep
 
 # Python
 __pycache__/

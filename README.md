@@ -62,7 +62,7 @@ ln -s "$(pwd)/main.py" ~/.local/bin/gh-activity
 | `--year`    | yes      | Calendar year to audit (e.g. `2026`)                                |
 | `--org`     | no       | Restrict search to a single org. Omit for global search             |
 | `--stdout`  | no       | Print to stdout instead of writing a file                           |
-| `--out`     | no       | Custom output file path (default: `./<user>-<year>-activity.md`)    |
+| `--out`     | no       | Custom output file path (default: `./output/<user>-<year>-activity.md`) |
 
 ## Output format
 

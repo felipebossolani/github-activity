@@ -214,7 +214,7 @@ def main():
     parser.add_argument("--org", default=None, help="Org pra filtrar (omita = global)")
     parser.add_argument("--year", required=True, type=int, help="Ano (ex: 2026)")
     parser.add_argument("--stdout", action="store_true", help="Imprime no stdout em vez de salvar arquivo")
-    parser.add_argument("--out", default=None, help="Caminho do arquivo de saída (default: ./<user>-<year>-activity.md)")
+    parser.add_argument("--out", default=None, help="Caminho do arquivo de saída (default: ./output/<user>-<year>-activity.md)")
 
     args = parser.parse_args()
 
@@ -238,7 +238,8 @@ def main():
     if args.stdout:
         print(report)
     else:
-        out_path = Path(args.out) if args.out else Path(f"./{args.user}-{args.year}-activity.md")
+        out_path = Path(args.out) if args.out else Path(f"./output/{args.user}-{args.year}-activity.md")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(report, encoding="utf-8")
         sys.stderr.write(f"[ok] Relatório salvo em: {out_path.resolve()}\n")
 
